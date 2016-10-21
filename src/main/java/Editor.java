@@ -1,6 +1,7 @@
 package main.java;
 
 import javafx.application.Application;
+import javafx.collections.ObservableFloatArray;
 import javafx.geometry.Point3D;
 import javafx.scene.*;
 import javafx.scene.effect.Light;
@@ -27,11 +28,13 @@ public class Editor extends Application {
     final Xform cameraXform = new Xform();
     final Xform cameraXform2 = new Xform();
     final Xform cameraXform3 = new Xform();
+    final Xform  axisGroup = new Xform();
     private static final double CAMERA_INITIAL_DISTANCE = -450;
     private static final double CAMERA_INITIAL_X_ANGLE = 70.0;
     private static final double CAMERA_INITIAL_Y_ANGLE = 320.0;
     private static final double CAMERA_NEAR_CLIP = 0.1;
     private static final double CAMERA_FAR_CLIP = 10000.0;
+    private static final double AXIS_LENGTH = 240.0;
     //objects
     final Xform groupA = new Xform();
     final Xform groupB = new Xform();
@@ -70,7 +73,6 @@ public class Editor extends Application {
         System.out.println(m.getPoints().size());
         int[] faces_array = new int[m.getFaces().size()];
         m.getFaces().toArray(faces_array);
-        int step = m.getPoints().size()/3;
         for (int i=0; i<faces_array.length; i++) {
             if (i%2 == 0) {
                 int point_index = faces_array[i]*3;
@@ -92,6 +94,109 @@ public class Editor extends Application {
         }
         //8 point in cube
         //24 point in points array
+    }
+
+    private void buildAxes() {
+        final PhongMaterial redMaterial = new PhongMaterial();
+        redMaterial.setDiffuseColor(Color.DARKRED);
+        redMaterial.setSpecularColor(Color.RED);
+
+        final PhongMaterial greenMaterial = new PhongMaterial();
+        greenMaterial.setDiffuseColor(Color.DARKGREEN);
+        greenMaterial.setSpecularColor(Color.GREEN);
+
+        final PhongMaterial blueMaterial = new PhongMaterial();
+        blueMaterial.setDiffuseColor(Color.DARKBLUE);
+        blueMaterial.setSpecularColor(Color.BLUE);
+
+        final Box xAxis = new Box(AXIS_LENGTH, 1, 1);
+        final Box yAxis = new Box(1, AXIS_LENGTH, 1);
+        final Box zAxis = new Box(1, 1, AXIS_LENGTH);
+
+        xAxis.setMaterial(redMaterial);
+        yAxis.setMaterial(greenMaterial);
+        zAxis.setMaterial(blueMaterial);
+
+        axisGroup.getChildren().addAll(xAxis, yAxis, zAxis);
+        axisGroup.setVisible(true);
+        world.getChildren().addAll(axisGroup);
+    }
+
+    private Triangle getTriangle(
+            ObservableFaceArray faces,
+            ObservableFloatArray points,
+            Xform cur,
+            int i
+    ) {
+        int point1_index = faces.get(i) * 3;
+        int point2_index = faces.get(i+2) * 3;
+        int point3_index = faces.get(i+4) * 3;
+        Point3D point1 = new Point3D(
+                points.get(point1_index),
+                points.get(point1_index + 1),
+                points.get(point1_index + 2)
+        );
+        point1 = cur.localToScene(point1);
+        Point3D point2 = new Point3D(
+                points.get(point2_index),
+                points.get(point2_index + 1),
+                points.get(point2_index + 2)
+        );
+        point2 = cur.localToScene(point2);
+        Point3D point3 = new Point3D(
+                points.get(point3_index),
+                points.get(point3_index + 1),
+                points.get(point3_index + 2)
+        );
+        point3 = cur.localToScene(point3);
+        return new Triangle(point1, point2, point3);
+    }
+
+    private void addToWorld(Point3D p, Color color) {
+        final PhongMaterial material = new PhongMaterial();
+        material.setDiffuseColor(color);
+        material.setSpecularColor(color);
+        Xform group = new Xform();
+        Box box = new Box(1.1f, 1.1f, 1.1f);
+        box.setMaterial(material);
+        group.setTranslate(p.getX(), p.getY(), p.getZ());
+        group.getChildren().add(box);
+        world.getChildren().add(group);
+    }
+
+    public void buildIntersectionCurve(TriangleMesh a, TriangleMesh b) {
+        ObservableFaceArray facesArrayA = a.getFaces();
+        ObservableFaceArray facesArrayB = b.getFaces();
+        for (int i=0; i<facesArrayA.size(); i+=6) {
+            for (int j=0; j<facesArrayB.size(); j+=6) {
+                Triangle trA = getTriangle(facesArrayA, a.getPoints(), groupA, i);
+                Triangle trB = getTriangle(facesArrayB, b.getPoints(), groupB, j);
+                Triangle.TriangleIntersectResult res = Triangle.intersectTriangles(trA, trB);
+
+                if (res == null) {
+                    System.out.println("No intersection");
+                    continue;
+                }
+
+                /*
+                addToWorld(trA.v0, Color.WHITE);
+                addToWorld(trA.v1, Color.WHITE);
+                addToWorld(trA.v2, Color.WHITE);
+                addToWorld(trB.v0, Color.WHITE);
+                addToWorld(trB.v1, Color.WHITE);
+                addToWorld(trB.v2, Color.WHITE);
+                */
+
+
+                System.out.println("Intersection at: " + res.ip1 +" and " + res.ip2);
+                addToWorld(res.ip1, Color.ORANGE);
+                addToWorld(res.ip2, Color.ORANGE);
+
+                //break;
+                //System.out.println(point);
+            }
+            //break;
+        }
 
     }
 
@@ -126,7 +231,9 @@ public class Editor extends Application {
         objB.setDrawMode(DrawMode.LINE);
         groupB.setScale(20, 20, 20);
         groupB.getChildren().add(objB);
-        meshTest(objB, groupB);
+        //meshTest(objB, groupB);
+
+        buildIntersectionCurve((TriangleMesh)objA.getMesh(), (TriangleMesh)objB.getMesh());
 
         world.getChildren().add(groupA);
         world.getChildren().add(groupB);
@@ -137,6 +244,7 @@ public class Editor extends Application {
     public void start(Stage primaryStage) throws Exception{
         buildCamera();
         addObjects();
+        buildAxes();
 
         root.getChildren().add(world);
         root.setDepthTest(DepthTest.ENABLE);
